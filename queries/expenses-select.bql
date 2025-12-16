@@ -1,0 +1,8 @@
+SELECT
+  date      AS Datum,
+  narration AS Buchungstext,
+  units(position) AS Betrag
+FROM postings
+WHERE account ~ '^Expenses:'
+  AND abs(number(units(position))) > 0
+ORDER BY date;
