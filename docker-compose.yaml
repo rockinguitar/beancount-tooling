@@ -8,7 +8,7 @@ services:
     ports:
       - "5001:5000"
     volumes:
-      - ./:/ledger:ro
+      - ${FINANCE_DIR}:/ledger:ro
     environment:
       BEANCOUNT_FILE: /ledger/main.beancount
     command: >
@@ -22,7 +22,7 @@ services:
       dockerfile: Dockerfile
     container_name: beancheck
     volumes:
-      - ./:/ledger:ro
+      - ${FINANCE_DIR}:/ledger:ro
     environment:
       BEANCOUNT_FILE: /ledger/main.beancount
     entrypoint: sh
@@ -32,7 +32,7 @@ services:
   csv2xlsx:
     image: python:3.14-slim
     volumes:
-      - ./:/work
+      - ${FINANCE_DIR}:/work
     working_dir: /work
     entrypoint: sh
     command: -lc 'pip install --no-cache-dir pandas openpyxl && python scripts/csv_to_xlsx_pandas.py'
