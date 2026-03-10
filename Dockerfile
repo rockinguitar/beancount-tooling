@@ -1,4 +1,4 @@
-FROM python:slim AS builder
+FROM python:3.12-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir --root-user-action ignore --prefix="/install" fava
 
-FROM python:slim
+FROM python:3.12-slim
 COPY --from=builder /install /usr/local
 
 ENV FAVA_HOST=0.0.0.0
