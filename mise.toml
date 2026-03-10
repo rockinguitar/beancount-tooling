@@ -1,0 +1,22 @@
+[env]
+FINANCE_DIR = "./example-ledger"
+
+[tasks.setup]
+description = "Setup colima"
+run = "colima start"
+
+[tasks.start]
+description = "Start Fava"
+run = [
+    "docker-compose up -d",
+    "open http://localhost:5001"
+]
+depends = ["setup"]
+
+[tasks.stop]
+description = "Stop Fava"
+run = "docker-compose down"
+
+[tasks.verify]
+description = "Verify beancount"
+run = "docker-compose --profile tools run --rm beancheck"
