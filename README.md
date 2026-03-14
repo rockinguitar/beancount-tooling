@@ -60,7 +60,7 @@ mise run build-image
 Start Fava:
 
 ```bash
-mise run up
+mise start
 ```
 
 Run `bean-check`:
@@ -90,7 +90,7 @@ FROM=2026-02 TO=2026-02 mise run query-expenses
 Stop Fava:
 
 ```bash
-mise run down
+mise stop
 ```
 
 ## CLI

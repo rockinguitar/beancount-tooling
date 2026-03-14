@@ -12,7 +12,7 @@ BEANCOUNT_ENGINE = "docker"
 description = "Build the Fava / Beancount tooling image"
 run = "docker-compose build"
 
-[tasks.up]
+[tasks.start]
 description = "Start Fava against the configured ledger"
 run = [
     "docker-compose up -d fava",
@@ -20,7 +20,7 @@ run = [
 ]
 depends = ["build-image"]
 
-[tasks.down]
+[tasks.stop]
 description = "Stop Fava"
 run = "docker-compose down"
 
