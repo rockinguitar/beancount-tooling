@@ -1,39 +1,26 @@
 services:
-  beancount:
-    image: fava-local
+  fava:
+    image: beancount-tooling
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: beancount
     ports:
-      - "5001:5000"
+      - "${FAVA_PORT:-5001}:5000"
     volumes:
-      - ${FINANCE_DIR}:/ledger:ro
+      - ${FINANCE_DIR:-./example}:/ledger:ro
     environment:
-      BEANCOUNT_FILE: /ledger/main.beancount
+      BEANCOUNT_FILENAME: ${BEANCOUNT_FILENAME:-test.beancount}
     command: >
-      sh -lc 'fava -H 0.0.0.0 -p 5000 "$$BEANCOUNT_FILE"'
+      sh -lc 'fava -H 0.0.0.0 -p 5000 "/ledger/$$BEANCOUNT_FILENAME"'
     restart: unless-stopped
 
-  beancheck:
-    image: fava-local
+  beancount-tools:
+    image: beancount-tooling
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: beancheck
     volumes:
-      - ${FINANCE_DIR}:/ledger:ro
+      - ${FINANCE_DIR:-./example}:/ledger:ro
     environment:
-      BEANCOUNT_FILE: /ledger/main.beancount
-    entrypoint: sh
-    command: -lc 'bean-check "$$BEANCOUNT_FILE"'
-    profiles: ["tools"]
-
-  csv2xlsx:
-    image: python:3.14-slim
-    volumes:
-      - ${FINANCE_DIR}:/work
-    working_dir: /work
-    entrypoint: sh
-    command: -lc 'pip install --no-cache-dir pandas openpyxl && python scripts/csv_to_xlsx_pandas.py'
+      BEANCOUNT_FILENAME: ${BEANCOUNT_FILENAME:-test.beancount}
     profiles: ["tools"]

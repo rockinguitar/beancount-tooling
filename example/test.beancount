@@ -1,0 +1,44 @@
+option "title" "beancount-tooling example"
+option "operating_currency" "EUR"
+
+2026-01-01 open Assets:Bank:Checking EUR
+2026-01-01 open Assets:Savings EUR
+2026-01-01 open Income:Salary EUR
+2026-01-01 open Income:Interest EUR
+2026-01-01 open Expenses:Food EUR
+2026-01-01 open Expenses:Housing:Rent EUR
+2026-01-01 open Expenses:Transport EUR
+2026-01-01 open Expenses:Fun EUR
+2026-01-01 open Equity:Opening-Balances EUR
+
+2026-01-01 * "Opening balance"
+  Assets:Bank:Checking          1500.00 EUR
+  Equity:Opening-Balances      -1500.00 EUR
+
+2026-01-31 * "Example Corp" "January salary"
+  Assets:Bank:Checking          3200.00 EUR
+  Income:Salary                -3200.00 EUR
+
+2026-02-01 * "Landlord" "Monthly rent"
+  Expenses:Housing:Rent         1200.00 EUR
+  Assets:Bank:Checking         -1200.00 EUR
+
+2026-02-02 * "Supermarket" "Groceries"
+  Expenses:Food                   54.20 EUR
+  Assets:Bank:Checking           -54.20 EUR
+
+2026-02-03 * "Public transport" "Travel card"
+  Expenses:Transport              79.00 EUR
+  Assets:Bank:Checking           -79.00 EUR
+
+2026-02-10 * "Cinema" "Movie night"
+  Expenses:Fun                    18.50 EUR
+  Assets:Bank:Checking           -18.50 EUR
+
+2026-02-15 * "Savings transfer"
+  Assets:Savings                 400.00 EUR
+  Assets:Bank:Checking          -400.00 EUR
+
+2026-02-28 * "Example Bank" "Savings interest"
+  Assets:Savings                   2.75 EUR
+  Income:Interest                 -2.75 EUR

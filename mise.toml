@@ -1,22 +1,75 @@
+[tools]
+go = "1.26.0"
+
 [env]
-FINANCE_DIR = "./example-ledger"
+FINANCE_DIR = "./example"
+REPORTS_DIR = "./example/reports"
+BEANCOUNT_FILENAME = "test.beancount"
+FAVA_PORT = "5001"
+BEANCOUNT_ENGINE = "docker"
 
-[tasks.setup]
-description = "Setup colima"
-run = "colima start"
+[tasks.build-image]
+description = "Build the Fava / Beancount tooling image"
+run = "docker-compose build"
 
-[tasks.start]
-description = "Start Fava"
+[tasks.up]
+description = "Start Fava against the configured ledger"
 run = [
-    "docker-compose up -d",
-    "open http://localhost:5001"
+    "docker-compose up -d fava",
+    "open http://localhost:${FAVA_PORT}"
 ]
-depends = ["setup"]
+depends = ["build-image"]
 
-[tasks.stop]
+[tasks.down]
 description = "Stop Fava"
 run = "docker-compose down"
 
-[tasks.verify]
-description = "Verify beancount"
-run = "docker-compose --profile tools run --rm beancheck"
+[tasks.check]
+description = "Run bean-check in Docker"
+run = "docker-compose --profile tools run --rm -T --no-deps beancount-tools bean-check /ledger/$BEANCOUNT_FILENAME"
+
+[tasks.cli]
+description = "Run the Go CLI directly"
+run = "cd tooling && go run ./cmd/beantool"
+
+[tasks.query-expenses]
+description = "Run the example expenses query with optional FROM/TO env overrides"
+run = """
+sh -lc 'cd tooling && go run ./cmd/beantool query expenses \
+  --engine "$BEANCOUNT_ENGINE" \
+  ${FROM:+--from "$FROM"} \
+  ${TO:+--to "$TO"}'
+"""
+
+[tasks.query-income]
+description = "Run the example income query with optional FROM/TO env overrides"
+run = """
+sh -lc 'cd tooling && go run ./cmd/beantool query income \
+  --engine "$BEANCOUNT_ENGINE" \
+  ${FROM:+--from "$FROM"} \
+  ${TO:+--to "$TO"}'
+"""
+
+[tasks.report-expenses]
+description = "Write an expenses workbook with optional FROM/TO/OUT env overrides"
+run = """
+sh -lc 'cd tooling && go run ./cmd/beantool report expenses \
+  --engine "$BEANCOUNT_ENGINE" \
+  ${FROM:+--from "$FROM"} \
+  ${TO:+--to "$TO"} \
+  --out "${OUT:-$REPORTS_DIR/expenses.xlsx}"'
+"""
+
+[tasks.report-income]
+description = "Write an income workbook with optional FROM/TO/OUT env overrides"
+run = """
+sh -lc 'cd tooling && go run ./cmd/beantool report income \
+  --engine "$BEANCOUNT_ENGINE" \
+  ${FROM:+--from "$FROM"} \
+  ${TO:+--to "$TO"} \
+  --out "${OUT:-$REPORTS_DIR/income.xlsx}"'
+"""
+
+[tasks.test]
+description = "Run Go unit tests"
+run = "cd tooling && go test ./..."
