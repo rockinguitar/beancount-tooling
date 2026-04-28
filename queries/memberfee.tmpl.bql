@@ -1,0 +1,3 @@
+SELECT date, narration, abs(position), any_meta('zahler')
+WHERE "Income:Mitgliedsbeitraege" IN accounts
+AND account = "Income:Mitgliedsbeitraege"

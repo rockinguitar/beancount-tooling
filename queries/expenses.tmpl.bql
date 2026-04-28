@@ -1,0 +1,15 @@
+SELECT
+  date AS Datum,
+  narration AS Buchungstext,
+  abs(number(units(position))) AS Betrag,
+  currency(units(position)) AS Waehrung
+FROM postings
+WHERE account ~ '^Expenses:'
+  AND abs(number(units(position))) > 0
+{{- if .From }}
+  AND date >= {{ .From }}
+{{- end }}
+{{- if .To }}
+  AND date <= {{ .To }}
+{{- end }}
+ORDER BY date;

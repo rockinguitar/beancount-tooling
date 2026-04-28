@@ -1,88 +1,142 @@
-# beancount-tooling
+# Beancount Tooling
 
-## Docker
+![Go](https://img.shields.io/badge/Go-CLI-00ADD8?logo=go)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker)
+![Beancount](https://img.shields.io/badge/Beancount-querying-5B3DF5)
+![Fava](https://img.shields.io/badge/Fava-web%20UI-7A3E9D)
+![Mise](https://img.shields.io/badge/mise-task%20runner-5E6AD2)
 
-Colima (replacement for Docker)
+Small tooling repo for running a Beancount ledger in Fava, validating it with `bean-check`, and generating filtered XLSX reports through a Go CLI.
+
+## Prerequisites
+
+- Docker plus either Docker Desktop or Colima
+- `mise`
+- Go `1.26` for local CLI development and tests
+
+If you use Colima:
 
 ```bash
 colima start
 ```
 
-Build Docker image
+## Repository layout
+
+- `tooling/` contains the application module and CLI
+- `queries/` contains parameterized BQL templates
+- `example/` contains a tiny demo ledger
+- `example/reports/` is the default demo output directory and stays out of git
+
+## Configuration
+
+The workflow is driven by environment variables. `mise.toml` provides demo defaults and you can override them in `mise.local.toml`.
+
+```toml
+[env]
+FINANCE_DIR = "/path/to/your/ledger-directory"
+REPORTS_DIR = "/path/to/your/reports-directory"
+BEANCOUNT_FILENAME = "main.beancount"
+FAVA_PORT = "5001"
+BEANCOUNT_ENGINE = "docker"
+```
+
+`BEANCOUNT_FILENAME` is only the entry ledger filename or relative path inside `FINANCE_DIR`.
+
+Examples:
+
+- `BEANCOUNT_FILENAME = "main.beancount"`
+- `BEANCOUNT_FILENAME = "personal/main.beancount"`
+
+## Example workflow
+
+Without any overrides, the repo uses `example/test.beancount`.
+
+Build the image:
 
 ```bash
-docker build --no-cache -t fava-local .
+mise run build-image
 ```
 
-Start container
+Start Fava:
 
 ```bash
-docker-compose up -d
-open http://localhost:5001
+mise start
 ```
 
-Stop container
+Run `bean-check`:
 
 ```bash
-docker-compose down
+mise run check
 ```
 
-bean-check (Überprüft die Kontobuchungen)
-
-- Kein Output, wenn keine Fehler vorhanden sind.
-- Wenn Fehler vorhanden sind, werden die aufgelistet.
+Generate an example expenses workbook:
 
 ```bash
-docker-compose --profile tools run --rm beancheck
+FROM=2026-02 TO=2026-02 mise run report-expenses
 ```
 
-## Abfragen
-
-Einkommen
-
-```sql
-SELECT
-  date      AS Datum,
-  narration AS Buchungstext,
-  abs(number(units(position))) AS Betrag
-FROM postings
-WHERE account ~ '^Income:'
-  AND abs(number(units(position))) > 0
-ORDER BY date;
-```
-
-Ausgaben
-
-```sql
-SELECT
-  date      AS Datum,
-  narration AS Buchungstext,
-  units(position) AS Betrag
-FROM postings
-WHERE account ~ '^Expenses:'
-  AND abs(number(units(position))) > 0
-ORDER BY date;
-```
-
-## Generate reports
+Generate an example income workbook:
 
 ```bash
-mkdir -p exports
+FROM=2026-01 TO=2026-12 mise run report-income
+```
 
-# Export income into csv
-docker-compose run --rm \
-  -e BEANCOUNT_FILE=/ledger/main.beancount \
-  beancount sh -lc 'bean-query -f csv "$BEANCOUNT_FILE" "$(cat)"' \
-  < queries/income-select.bql \
-  > exports/income-select.csv
+Run the raw CSV query:
 
-# Export expenses into csv
-  docker-compose run --rm \
-  -e BEANCOUNT_FILE=/ledger/main.beancount \
-  beancount sh -lc 'bean-query -f csv "$BEANCOUNT_FILE" "$(cat)"' \
-  < queries/expenses-select.bql \
-  > exports/expenses-select.csv
+```bash
+FROM=2026-02 TO=2026-02 mise run query-expenses
+```
 
-# Convert to xlsx
-docker-compose --profile tools run --rm csv2xlsx
- ```
+Stop Fava:
+
+```bash
+mise stop
+```
+
+## CLI
+
+The Go CLI renders query templates, executes `bean-query`, and writes styled `.xlsx` workbooks.
+
+Query to stdout:
+
+```bash
+go run ./tooling/cmd/beantool query expenses --from 2026-02-01 --to 2026-02-28
+```
+
+Create a workbook:
+
+```bash
+go run ./tooling/cmd/beantool report expenses \
+  --from 2026-02-01 \
+  --to 2026-02-28 \
+  --out ./example/reports/expenses-february.xlsx
+```
+
+By default the CLI uses `BEANCOUNT_ENGINE=docker`, so `bean-query` runs inside the `beancount-tools` service. If you already have Beancount installed locally, you can switch to:
+
+```bash
+BEANCOUNT_ENGINE=local go run ./tooling/cmd/beantool report income --from 2026-01 --to 2026-12
+```
+
+## Query templates
+
+Each report is a named template under `queries/`.
+
+Current examples:
+
+- `queries/expenses.tmpl.bql`
+- `queries/income.tmpl.bql`
+
+They support optional `from` / `to` bounds and are rendered by the CLI before execution.
+
+## Development
+
+Run tests:
+
+```bash
+mise run test
+```
+
+You can override the demo configuration in `mise.local.toml`, which is already gitignored.
+
+On this repository, the Docker-based workflow uses the standalone `docker-compose` command rather than `docker compose`.
