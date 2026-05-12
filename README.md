@@ -72,13 +72,19 @@ mise run check
 Generate an example expenses workbook:
 
 ```bash
-FROM=2026-02 TO=2026-02 mise run report-expenses
+FROM=2026-01 TO=2026-02 mise run report-expenses
 ```
 
 Generate an example income workbook:
 
 ```bash
 FROM=2026-01 TO=2026-12 mise run report-income
+```
+
+Generate an example memberfee workbook:
+
+```bash
+FROM=2026-01 TO=2026-12 mise run report-memberfee
 ```
 
 Run the raw CSV query:

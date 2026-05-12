@@ -14,10 +14,7 @@ run = "docker-compose build"
 
 [tasks.start]
 description = "Start Fava against the configured ledger"
-run = [
-    "docker-compose up -d fava",
-    "open http://localhost:${FAVA_PORT}"
-]
+run = ["docker-compose up -d fava", "open http://localhost:${FAVA_PORT}"]
 depends = ["build-image"]
 
 [tasks.stop]
@@ -68,6 +65,24 @@ sh -lc 'cd tooling && go run ./cmd/beantool report income \
   ${FROM:+--from "$FROM"} \
   ${TO:+--to "$TO"} \
   --out "${OUT:-$REPORTS_DIR/income.xlsx}"'
+"""
+
+[tasks.report-memberfee]
+description = "Write a member fee workbook with optional FROM/TO/OUT env overrides"
+run = """
+sh -lc 'cd tooling && go run ./cmd/beantool report memberfee \
+  --engine "$BEANCOUNT_ENGINE" \
+  ${FROM:+--from "$FROM"} \
+  ${TO:+--to "$TO"} \
+  --out "${OUT:-$REPORTS_DIR/memberfee.xlsx}"'
+"""
+
+[tasks.reports-all]
+description = "Write all financial reports"
+run = """
+mise run report-income
+mise run report-expenses
+mise run report-memberfee
 """
 
 [tasks.test]

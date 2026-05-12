@@ -6,3 +6,10 @@ SELECT
     any_meta('quelle') as "Quelle"
 WHERE "Income:Mitgliedsbeitraege" IN accounts
 AND account = "Income:Mitgliedsbeitraege"
+{{- if .From }}
+  AND date >= {{ .From }}
+{{- end }}
+{{- if .To }}
+  AND date <= {{ .To }}
+{{- end }}
+ORDER BY date;
