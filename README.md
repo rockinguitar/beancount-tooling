@@ -87,6 +87,12 @@ Generate an example memberfee workbook:
 FROM=2026-01 TO=2026-12 mise run report-memberfee
 ```
 
+Generate all reports: 
+
+```bash
+FROM=2026-01-01 TO=2026-12-31 mise run reports-all
+```
+
 Run the raw CSV query:
 
 ```bash
