@@ -1,3 +1,8 @@
-SELECT date, narration, abs(position), any_meta('zahler')
+SELECT 
+    date AS "Datum", 
+    narration AS "Buchungstext", 
+    abs(position) as "Betrag",
+    any_meta('zahler') as "Zahler",
+    any_meta('quelle') as "Quelle"
 WHERE "Income:Mitgliedsbeitraege" IN accounts
 AND account = "Income:Mitgliedsbeitraege"
