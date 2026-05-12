@@ -1,8 +1,7 @@
 SELECT
-  date AS Datum,
-  narration AS Buchungstext,
-  abs(number(units(position))) AS Betrag,
-  currency(units(position)) AS Waehrung
+  date AS "Datum",
+  narration AS "Buchungstext",
+  abs(position) as "Betrag"
 FROM postings
 WHERE account ~ '^Income:'
   AND abs(number(units(position))) > 0
