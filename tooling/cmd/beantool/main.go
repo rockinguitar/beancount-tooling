@@ -216,10 +216,12 @@ func loadSettings() settings {
 		repoRoot = "."
 	}
 
+	financeRaw := envOrDefault("FINANCE_DIR", filepath.Join(repoRoot, "example"))
+	reportsRaw := envOrDefault("REPORTS_DIR", filepath.Join(repoRoot, "example", "reports"))
 	return settings{
 		repoRoot:          repoRoot,
-		financeDir:        resolveRepoPath(repoRoot, envOrDefault("FINANCE_DIR", filepath.Join(repoRoot, "example"))),
-		reportsDir:        resolveRepoPath(repoRoot, envOrDefault("REPORTS_DIR", filepath.Join(repoRoot, "example", "reports"))),
+		financeDir:        resolveRepoPath(repoRoot, financeRaw),
+		reportsDir:        resolveRepoPath(repoRoot, reportsRaw),
 		beancountFilename: envOrDefault("BEANCOUNT_FILENAME", "test.beancount"),
 		engine:            runner.Engine(envOrDefault("BEANCOUNT_ENGINE", string(runner.EngineDocker))),
 	}
@@ -259,11 +261,24 @@ func envOrDefault(key, fallback string) string {
 }
 
 func resolveRepoPath(repoRoot, value string) string {
+	value = expandHome(value)
+
 	if value == "" || filepath.IsAbs(value) {
 		return value
 	}
 
 	return filepath.Join(repoRoot, value)
+}
+
+func expandHome(p string) string {
+	if strings.HasPrefix(p, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return p
+		}
+		return filepath.Join(home, strings.TrimPrefix(p, "~"))
+	}
+	return p
 }
 
 func writeFile(path string, data []byte) error {
