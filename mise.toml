@@ -6,6 +6,7 @@ FINANCE_DIR = "./example"
 REPORTS_DIR = "./example/reports"
 BEANCOUNT_FILENAME = "test.beancount"
 FAVA_PORT = "5001"
+FAVA_URL = "http://localhost:5001"
 BEANCOUNT_ENGINE = "docker"
 
 [tasks.build-image]
@@ -32,7 +33,7 @@ run = "cd tooling && go run ./cmd/beantool"
 [tasks.query-expenses]
 description = "Run the example expenses query with optional FROM/TO env overrides"
 run = """
-sh -lc 'cd tooling && go run ./cmd/beantool query expenses \
+sh -c 'cd tooling && go run ./cmd/beantool query expenses \
   --engine "$BEANCOUNT_ENGINE" \
   ${FROM:+--from "$FROM"} \
   ${TO:+--to "$TO"}'
@@ -41,7 +42,7 @@ sh -lc 'cd tooling && go run ./cmd/beantool query expenses \
 [tasks.query-income]
 description = "Run the example income query with optional FROM/TO env overrides"
 run = """
-sh -lc 'cd tooling && go run ./cmd/beantool query income \
+sh -c 'cd tooling && go run ./cmd/beantool query income \
   --engine "$BEANCOUNT_ENGINE" \
   ${FROM:+--from "$FROM"} \
   ${TO:+--to "$TO"}'
@@ -50,7 +51,7 @@ sh -lc 'cd tooling && go run ./cmd/beantool query income \
 [tasks.report-expenses]
 description = "Write an expenses workbook with optional FROM/TO/OUT env overrides"
 run = """
-sh -lc 'cd tooling && go run ./cmd/beantool report expenses \
+sh -c 'cd tooling && go run ./cmd/beantool report expenses \
   --engine "$BEANCOUNT_ENGINE" \
   ${FROM:+--from "$FROM"} \
   ${TO:+--to "$TO"} \
@@ -60,21 +61,38 @@ sh -lc 'cd tooling && go run ./cmd/beantool report expenses \
 [tasks.report-income]
 description = "Write an income workbook with optional FROM/TO/OUT env overrides"
 run = """
-sh -lc 'cd tooling && go run ./cmd/beantool report income \
+sh -c 'cd tooling && go run ./cmd/beantool report income \
   --engine "$BEANCOUNT_ENGINE" \
   ${FROM:+--from "$FROM"} \
   ${TO:+--to "$TO"} \
   --out "${OUT:-$REPORTS_DIR/income.xlsx}"'
 """
 
-[tasks.report-memberfee]
-description = "Write a member fee workbook with optional FROM/TO/OUT env overrides"
+[tasks.statement-balance]
+description = "Write the Bilanz as HTML via the Fava API"
 run = """
-sh -lc 'cd tooling && go run ./cmd/beantool report memberfee \
-  --engine "$BEANCOUNT_ENGINE" \
-  ${FROM:+--from "$FROM"} \
-  ${TO:+--to "$TO"} \
-  --out "${OUT:-$REPORTS_DIR/memberfee.xlsx}"'
+sh -c 'cd tooling && go run ./cmd/beantool report balance \
+  --year "${YEAR:-$(date +%Y)}" \
+  --fava-url "$FAVA_URL" \
+  --out "${OUT:-$REPORTS_DIR/balance-${YEAR:-$(date +%Y)}.html}"'
+"""
+
+[tasks.statement-income]
+description = "Write the Gewinn- und Verlustrechnung as HTML via the Fava API"
+run = """
+sh -c 'cd tooling && go run ./cmd/beantool report income \
+  --year "${YEAR:-$(date +%Y)}" \
+  --fava-url "$FAVA_URL" \
+  --out "${OUT:-$REPORTS_DIR/income-${YEAR:-$(date +%Y)}.html}"'
+"""
+
+[tasks.statement-revisor]
+description = "Write Bilanz + GuV in one HTML document via the Fava API"
+run = """
+sh -c 'cd tooling && go run ./cmd/beantool report revisor \
+  --year "${YEAR:-$(date +%Y)}" \
+  --fava-url "$FAVA_URL" \
+  --out "${OUT:-$REPORTS_DIR/revisor-${YEAR:-$(date +%Y)}.html}"'
 """
 
 [tasks.reports-all]
@@ -82,7 +100,6 @@ description = "Write all financial reports"
 run = """
 mise run report-income
 mise run report-expenses
-mise run report-memberfee
 """
 
 [tasks.test]

@@ -8,6 +8,8 @@
 
 Small tooling repo for running a Beancount ledger in Fava, validating it with `bean-check`, and generating filtered XLSX reports through a Go CLI.
 
+The CLI also talks to the Fava JSON API and renders a **self-contained, print-ready HTML document** containing the Bilanz (balance sheet) and Gewinn- und Verlustrechnung (income statement) formatted for a Revisor (auditor).
+
 ## Prerequisites
 
 - Docker plus either Docker Desktop or Colima
@@ -22,133 +24,75 @@ colima start
 
 ## Repository layout
 
-- `tooling/` contains the application module and CLI
-- `queries/` contains parameterized BQL templates
-- `example/` contains a tiny demo ledger
-- `example/reports/` is the default demo output directory and stays out of git
+- `tooling/` — Go CLI and internal packages (Fava client, report renderer)
+- `queries/` — parameterized BQL templates (example ledger only; put your own templates in your ledger directory)
+- `example/` — tiny demo ledger and demo output
 
-## Configuration
+## Per-ledger configuration
 
-The workflow is driven by environment variables. `mise.toml` provides demo defaults and you can override them in `mise.local.toml`.
+This repo ships sensible defaults for the `example/` demo ledger.
+To point at a real ledger, add a `mise.toml` **inside the ledger directory** setting absolute paths:
 
 ```toml
 [env]
-FINANCE_DIR = "/path/to/your/ledger-directory"
-REPORTS_DIR = "/path/to/your/reports-directory"
+TOOLING_DIR = "/path/to/beancount-tooling"
+FINANCE_DIR = "/path/to/your-ledger"
+REPORTS_DIR = "/path/to/your-ledger/reports"
+QUERIES_DIR = "/path/to/your-ledger/queries"
 BEANCOUNT_FILENAME = "main.beancount"
-FAVA_PORT = "5001"
 BEANCOUNT_ENGINE = "docker"
+FAVA_PORT = "5001"
+FAVA_URL = "http://localhost:5001"
 ```
 
-`BEANCOUNT_FILENAME` is only the entry ledger filename or relative path inside `FINANCE_DIR`.
+All tasks below can then be run from the ledger directory (e.g. `mise run revisor`).
 
-Examples:
+## Available statements (Fava API → HTML)
 
-- `BEANCOUNT_FILENAME = "main.beancount"`
-- `BEANCOUNT_FILENAME = "personal/main.beancount"`
+These commands talk to a running Fava instance and render an HTML file.
 
-## Example workflow
-
-Without any overrides, the repo uses `example/test.beancount`.
-
-Build the image:
+### Bilanz (balance sheet)
 
 ```bash
-mise run build-image
+YEAR=2026 mise run statement-balance
+# or from the CLI:
+go run ./tooling/cmd/beantool report balance --year 2026 --out ./report-balance.html
 ```
 
-Start Fava:
+### Gewinn- und Verlustrechnung (income statement)
 
 ```bash
-mise start
+YEAR=2026 mise run statement-income
 ```
 
-Run `bean-check`:
+### Revisor (Bilanz + GuV in one document)
 
 ```bash
-mise run check
+YEAR=2026 mise run statement-revisor
 ```
 
-Generate an example expenses workbook:
+## XLSX reports (bean-query templates)
 
 ```bash
 FROM=2026-01 TO=2026-12 mise run report-expenses
-```
-
-Generate an example income workbook:
-
-```bash
 FROM=2026-01 TO=2026-12 mise run report-income
-```
-
-Generate an example memberfee workbook:
-
-```bash
-FROM=2026-01 TO=2026-12 mise run report-memberfee
-```
-
-Generate all reports: 
-
-```bash
 FROM=2026-01-01 TO=2026-12-31 mise run reports-all
 ```
 
-Run the raw CSV query:
-
-```bash
-FROM=2026-02 TO=2026-02 mise run query-expenses
-```
-
-Stop Fava:
-
-```bash
-mise stop
-```
-
-## CLI
-
-The Go CLI renders query templates, executes `bean-query`, and writes styled `.xlsx` workbooks.
-
-Query to stdout:
-
-```bash
-go run ./tooling/cmd/beantool query expenses --from 2026-02-01 --to 2026-02-28
-```
-
-Create a workbook:
-
-```bash
-go run ./tooling/cmd/beantool report expenses \
-  --from 2026-02-01 \
-  --to 2026-02-28 \
-  --out ./example/reports/expenses-february.xlsx
-```
-
-By default the CLI uses `BEANCOUNT_ENGINE=docker`, so `bean-query` runs inside the `beancount-tools` service. If you already have Beancount installed locally, you can switch to:
-
-```bash
-BEANCOUNT_ENGINE=local go run ./tooling/cmd/beantool report income --from 2026-01 --to 2026-12
-```
-
-## Query templates
-
-Each report is a named template under `queries/`.
-
-Current examples:
-
-- `queries/expenses.tmpl.bql`
-- `queries/income.tmpl.bql`
-
-They support optional `from` / `to` bounds and are rendered by the CLI before execution.
+Add a named `.tmpl.bql` file to your ledger's `queries/` directory and use `query <name>` or `report <name>` to run it.
 
 ## Development
 
-Run tests:
-
 ```bash
+mise run build-image
+mise start
+mise run check
 mise run test
+mise stop
 ```
 
-You can override the demo configuration in `mise.local.toml`, which is already gitignored.
+Run tests directly:
 
-On this repository, the Docker-based workflow uses the standalone `docker-compose` command rather than `docker compose`.
+```bash
+cd tooling && go test ./...
+```

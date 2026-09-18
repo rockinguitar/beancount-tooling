@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     flex \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir --root-user-action ignore --prefix="/install" fava[excel]
+RUN pip install --no-cache-dir --root-user-action ignore --prefix="/install" "fava[excel]==1.30.16"
 
 FROM python:3.14.5-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97
 COPY --from=builder /install /usr/local
