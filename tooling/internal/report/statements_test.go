@@ -75,6 +75,8 @@ func TestRenderStatementsHTML(t *testing.T) {
 		"Aktiven",
 		"Passiven",
 		"Gewinn- und Verlustrechnung 2026",
+		"Einnahmen",
+		"Ausgaben",
 		"Reingewinn",
 		"1.000,00", // Total Aktiven / Total Passiven
 		"200,00",   // negated Verbindlichkeiten
@@ -82,8 +84,8 @@ func TestRenderStatementsHTML(t *testing.T) {
 		"5.000,00", // Einnahmen
 		"2.000,00", // Ausgaben
 		"3.000,00", // Reingewinn
-		"cap-balance",
-		"cap-income",
+		`class="section balance"`,
+		`class="section income"`,
 		"print-color-adjust",
 		`title="Vermoegen:Bank:Giro"`,
 		">Giro</td>",
@@ -105,9 +107,56 @@ func TestRenderStatementsHTML(t *testing.T) {
 		">Eigenkapital:Anfangsbestand</td>",
 		">Einnahmen:Mitgliedsbeitraege</td>",
 		">Ausgaben:Betrieb</td>",
+		"Total Vermögen",
+		"Total Verbindlichkeiten",
+		"Total Eigenkapital",
 	} {
 		if strings.Contains(html, unwanted) {
-			t.Errorf("rendered HTML still shows full account path in %q", unwanted)
+			t.Errorf("rendered HTML still contains %q", unwanted)
+		}
+	}
+}
+
+func TestRenderStatementsHTMLSideBySide(t *testing.T) {
+	html, err := RenderStatementsHTML(StatementsDoc{
+		Title:   "Test",
+		Year:    "2026",
+		Balance: sampleBalance(),
+		Income:  sampleIncome(),
+	})
+	if err != nil {
+		t.Fatalf("RenderStatementsHTML returned error: %v", err)
+	}
+
+	rows := strings.Split(html, "<tr>")
+
+	foundBalancePair := false
+	foundIncomePair := false
+	foundBalanceTotals := false
+	foundIncomeTotals := false
+	for _, fragment := range rows {
+		if strings.Contains(fragment, ">Giro</td>") && strings.Contains(fragment, ">Vorauszahlungen</td>") {
+			foundBalancePair = true
+		}
+		if strings.Contains(fragment, ">Mitgliedsbeitraege</td>") && strings.Contains(fragment, ">Betrieb</td>") {
+			foundIncomePair = true
+		}
+		if strings.Contains(fragment, ">Total Aktiven</td>") && strings.Contains(fragment, ">Total Passiven</td>") {
+			foundBalanceTotals = true
+		}
+		if strings.Contains(fragment, ">Total Einnahmen</td>") && strings.Contains(fragment, ">Total Ausgaben</td>") {
+			foundIncomeTotals = true
+		}
+	}
+
+	for name, ok := range map[string]bool{
+		"Aktiven/Passiven side by side":   foundBalancePair,
+		"Einnahmen/Ausgaben side by side": foundIncomePair,
+		"Bilanz totals on same line":      foundBalanceTotals,
+		"GuV totals on same line":         foundIncomeTotals,
+	} {
+		if !ok {
+			t.Errorf("expected %s in a single table row", name)
 		}
 	}
 }
@@ -122,8 +171,14 @@ func TestRenderStatementsHTMLBalanceOnly(t *testing.T) {
 		t.Fatalf("RenderStatementsHTML returned error: %v", err)
 	}
 
-	if strings.Contains(html, `class="pagebreak"`) {
-		t.Errorf("did not expect a page break when no income statement is rendered")
+	if strings.Contains(html, `class="section income"`) {
+		t.Errorf("did not expect an income section in a balance-only report")
+	}
+	if strings.Contains(html, "Gewinn- und Verlustrechnung") {
+		t.Errorf("did not expect income statement content in a balance-only report, got %q", html)
+	}
+	if !strings.Contains(html, `class="section balance"`) {
+		t.Errorf("expected a balance section in a balance-only report")
 	}
 }
 
@@ -177,8 +232,12 @@ func TestRenderStatementsHTMLReservedAndZeroGroups(t *testing.T) {
 	for _, want := range []string{
 		"Laufendes Jahr",
 		"Vorjahr",
+		">Vorjahr</td>",
+		"Total Aktiven",
 		"Total Passiven",
 		`title="Eigenkapital:Earnings:Current"`,
+		`title="Eigenkapital:Earnings:Previous"`,
+		"420,00", // negated previous-year result
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("rendered HTML missing %q", want)
@@ -194,6 +253,10 @@ func TestRenderStatementsHTMLReservedAndZeroGroups(t *testing.T) {
 		if strings.Contains(html, unwanted) {
 			t.Errorf("rendered HTML should not contain %q", unwanted)
 		}
+	}
+
+	if !strings.Contains(html, ">500,00</span>") && !strings.Contains(html, "500,00&nbsp;NOK") {
+		t.Errorf("expected the total passiven of 500,00 to be rendered")
 	}
 }
 

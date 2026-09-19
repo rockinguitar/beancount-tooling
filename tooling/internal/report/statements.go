@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"maps"
 	"slices"
@@ -20,50 +21,33 @@ type StatementsDoc struct {
 	Income  *fava.TreeReport
 }
 
-// RenderStatementsHTML renders a self-contained, print-ready HTML document
-// containing the balance sheet and the income statement.
-func RenderStatementsHTML(doc StatementsDoc) (string, error) {
-	balance := renderBalance(doc)
-	income := renderIncome(doc)
+// section is one side-by-side ledger statement: the balance sheet or the
+// income statement. Body holds the detail grid, Footer the aligned closing
+// totals and Result optional full-width closing bars (e.g. Reingewinn).
+type section struct {
+	Class      string // css accent class, "balance" or "income"
+	Title      string // e.g. "Bilanz per 31.12.2026"
+	LeftTitle  string // column header, e.g. "Aktiven"
+	RightTitle string // column header, e.g. "Passiven"
+	Body       []gridRow
+	Footer     []gridRow
+	Result     []row
+}
 
-	var rows []row
-	rows = append(rows, balance...)
-	if len(balance) > 0 && len(income) > 0 {
-		rows = append(rows, row{Kind: rowPageBreak})
-	}
-	rows = append(rows, income...)
-
-	tmpl, err := template.New("statements").Parse(statementsTemplate)
-	if err != nil {
-		return "", err
-	}
-
-	data := struct {
-		Title string
-		Year  string
-		Rows  []row
-	}{
-		Title: doc.Title,
-		Year:  doc.Year,
-		Rows:  rows,
-	}
-
-	var out bytes.Buffer
-	if err := tmpl.Execute(&out, data); err != nil {
-		return "", err
-	}
-
-	return out.String(), nil
+// gridRow aligns one left-column row with one right-column row so both sides
+// sit on the same horizontal line. Either side may be nil when a column is
+// shorter than the other.
+type gridRow struct {
+	Left  *row
+	Right *row
 }
 
 type rowKind int
 
 const (
-	rowCaption rowKind = iota
-	rowGroup
+	rowGroup rowKind = iota
 	rowLeaf
 	rowTotal
-	rowPageBreak
 )
 
 type money struct {
@@ -76,27 +60,66 @@ type row struct {
 	Level    int
 	Label    string
 	Full     string
-	Accent   string
 	Negative bool
 	Money    []money
 }
 
-func (r row) IsPageBreak() bool { return r.Kind == rowPageBreak }
+func (r row) IsGroup() bool { return r.Kind == rowGroup }
 
-func (r row) IsCaption() bool { return r.Kind == rowCaption }
+func (r row) IsLeaf() bool { return r.Kind == rowLeaf }
 
-func (r row) Class() string {
-	switch r.Kind {
-	case rowGroup:
-		return "group"
-	case rowLeaf:
-		return "leaf"
-	default:
-		return "total"
-	}
+// Indent returns the CSS padding-left for the row's nesting level.
+func (r row) Indent() string {
+	return fmt.Sprintf("%.1fem", .5+float64(r.Level))
 }
 
-func renderBalance(doc StatementsDoc) []row {
+// RenderStatementsHTML renders a self-contained, print-ready HTML document
+// containing the balance sheet and the income statement.
+func RenderStatementsHTML(doc StatementsDoc) (string, error) {
+	var sections []section
+	if balance := balanceSection(doc); balance != nil {
+		sections = append(sections, *balance)
+	}
+	if income := incomeSection(doc); income != nil {
+		sections = append(sections, *income)
+	}
+
+	subtitle := "Bilanz und Gewinn- und Verlustrechnung"
+	if len(sections) == 1 {
+		switch sections[0].Class {
+		case "balance":
+			subtitle = "Bilanz"
+		case "income":
+			subtitle = "Gewinn- und Verlustrechnung"
+		}
+	}
+
+	tmpl, err := template.New("statements").Parse(statementsTemplate)
+	if err != nil {
+		return "", err
+	}
+
+	data := struct {
+		Title    string
+		Subtitle string
+		Year     string
+		Sections []section
+	}{
+		Title:    doc.Title,
+		Subtitle: subtitle,
+		Year:     doc.Year,
+		Sections: sections,
+	}
+
+	var out bytes.Buffer
+	if err := tmpl.Execute(&out, data); err != nil {
+		return "", err
+	}
+
+	return out.String(), nil
+}
+
+func balanceSection(doc StatementsDoc) *section {
 	if doc.Balance == nil || len(doc.Balance.Trees) == 0 {
 		return nil
 	}
@@ -108,41 +131,54 @@ func renderBalance(doc StatementsDoc) []row {
 		asOfLabel = balanceAsOf(doc.Year)
 	}
 
-	var rows []row
-	rows = append(rows, row{Kind: rowCaption, Label: "Bilanz " + asOfLabel, Accent: "cap-balance"})
-
-	rows = append(rows, row{Kind: rowCaption, Label: "Aktiven", Accent: "cap-balance"})
-	rows = append(rows, renderTree(trees[0], false)...)
-	rows = append(rows, totalRow("Total Aktiven", trees[0].BalanceChildren, false))
-
-	if len(trees) > 1 {
-		rows = append(rows, row{Kind: rowCaption, Label: "Passiven", Accent: "cap-balance"})
-		for _, tree := range trees[1:] {
-			rows = append(rows, renderTree(tree, true)...)
-		}
-		rows = append(rows, totalRow("Total Passiven", sumTree(trees[1:], true), false))
+	var left, right []row
+	left = treeRows(trees[0], false)
+	for _, tree := range trees[1:] {
+		right = append(right, treeRows(tree, true)...)
 	}
 
-	return rows
+	totalAssets := totalRow("Total Aktiven", trees[0].BalanceChildren, false)
+	totalPassive := totalRow("Total Passiven", sumTree(trees[1:], true), false)
+
+	return &section{
+		Class:      "balance",
+		Title:      "Bilanz " + asOfLabel,
+		LeftTitle:  "Aktiven",
+		RightTitle: "Passiven",
+		Body:       alignColumns(left, right),
+		Footer:     []gridRow{{Left: &totalAssets, Right: &totalPassive}},
+	}
 }
 
-func renderIncome(doc StatementsDoc) []row {
+func incomeSection(doc StatementsDoc) *section {
 	if doc.Income == nil || len(doc.Income.Trees) == 0 {
 		return nil
 	}
 
 	trees := doc.Income.Trees
-
-	var rows []row
-	rows = append(rows, row{Kind: rowCaption, Label: "Gewinn- und Verlustrechnung " + doc.Year, Accent: "cap-income"})
-
 	income := trees[0]
-	rows = append(rows, renderTree(income, true)...)
+
+	sec := &section{
+		Class:      "income",
+		Title:      "Gewinn- und Verlustrechnung " + doc.Year,
+		LeftTitle:  "Einnahmen",
+		RightTitle: "Ausgaben",
+	}
 
 	var expenses fava.TreeNode
 	if len(trees) > 2 {
 		expenses = trees[2]
-		rows = append(rows, renderTree(expenses, false)...)
+		sec.Body = alignColumns(treeRows(income, true), treeRows(expenses, false))
+	} else {
+		sec.Body = alignColumns(treeRows(income, true), nil)
+	}
+
+	totalIncome := totalRow("Total Einnahmen", income.BalanceChildren, true)
+	footer := gridRow{Left: &totalIncome}
+
+	if len(trees) > 2 {
+		totalExpenses := totalRow("Total Ausgaben", expenses.BalanceChildren, false)
+		footer.Right = &totalExpenses
 
 		profit := negate(addMaps(income.BalanceChildren, expenses.BalanceChildren))
 		label := "Reingewinn"
@@ -151,13 +187,17 @@ func renderIncome(doc StatementsDoc) []row {
 			label = "Reinverlust"
 			negative = true
 		}
-		rows = append(rows, row{Kind: rowTotal, Level: 0, Label: label, Negative: negative, Money: amounts(profit)})
+		sec.Result = []row{{Kind: rowTotal, Level: 0, Label: label, Negative: negative, Money: amounts(profit)}}
 	}
 
-	return rows
+	sec.Footer = []gridRow{footer}
+	return sec
 }
 
-func renderTree(tree fava.TreeNode, negateBalance bool) []row {
+// treeRows renders one account subtree as hierarchy rows: the root group
+// followed by its non-zero children. The closing total for the tree is not
+// included; grand totals live in the section's footer instead.
+func treeRows(tree fava.TreeNode, negateBalance bool) []row {
 	rootBalance := negateOpt(tree.BalanceChildren, negateBalance)
 	if isZero(rootBalance) {
 		return nil
@@ -189,8 +229,31 @@ func renderTree(tree fava.TreeNode, negateBalance bool) []row {
 	}
 	collect(tree.Children, 1)
 
-	result = append(result, totalRow("Total "+tree.Account, tree.BalanceChildren, negateBalance))
 	return result
+}
+
+// alignColumns merges two row lists into a side-by-side grid, padding the
+// shorter side so both columns share the same number of horizontals.
+func alignColumns(left, right []row) []gridRow {
+	max := len(left)
+	if len(right) > max {
+		max = len(right)
+	}
+
+	out := make([]gridRow, 0, max)
+	for i := 0; i < max; i++ {
+		var pair gridRow
+		if i < len(left) {
+			copy := left[i]
+			pair.Left = &copy
+		}
+		if i < len(right) {
+			copy := right[i]
+			pair.Right = &copy
+		}
+		out = append(out, pair)
+	}
+	return out
 }
 
 // shortAccount returns the last segment of a hierarchical account name.
@@ -232,7 +295,8 @@ func isReservedEquityAccount(account string) bool {
 }
 
 func totalRow(label string, values fava.Amount, negateValues bool) row {
-	return row{Kind: rowTotal, Level: 0, Label: label, Money: amounts(negateOpt(values, negateValues))}
+	values = negateOpt(values, negateValues)
+	return row{Kind: rowTotal, Level: 0, Label: label, Money: amounts(values), Negative: sumValues(values) < 0}
 }
 
 func negateOpt(values fava.Amount, doNegate bool) fava.Amount {
@@ -359,48 +423,258 @@ const statementsTemplate = `<!DOCTYPE html>
   <meta charset="utf-8"/>
   <title>{{.Title}} – Bilanz &amp; Erfolgsrechnung</title>
   <style>
-    @page { size: A4; margin: 18mm 16mm; }
+    :root {
+      --ink: #1f2a37;
+      --muted: #64748b;
+      --line: #e5e7eb;
+      --soft: #f8fafc;
+      --blue: #2563eb;
+      --tint-blue: #eff4ff;
+      --violet: #7c3aed;
+      --tint-violet: #f5f3ff;
+      --green: #059669;
+      --tint-green: #ecfdf5;
+      --orange: #d97706;
+      --tint-orange: #fff7ed;
+      --negative: #dc2626;
+      --tint-negative: #fef2f2;
+    }
+
+    @page { size: A4; margin: 24mm 20mm 22mm; }
+
     * { box-sizing: border-box; }
-    body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 11pt; color: #1f2937; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .header { border-bottom: 3px solid #3b5b8c; padding-bottom: 6pt; margin-bottom: 12pt; }
-    h1 { font-size: 18pt; margin: 0 0 2pt 0; color: #17202a; }
-    .subtitle { color: #6b7280; margin: 0; }
-    table { width: 100%; border-collapse: collapse; }
-    tr.pagebreak td { height: 0; padding: 0; border: 0; }
-    td { padding: 1.5pt 4pt; vertical-align: top; }
-    td.num { text-align: right; white-space: nowrap; }
-    .caption td { font-weight: 700; font-size: 12pt; padding: 5pt 8pt; letter-spacing: .02em; border-radius: 3pt; }
-    .caption.cap-balance td { color: #1e3a5f; background: #eef2f8; border-top: 1px solid #c6d3e4; border-bottom: 1px solid #c6d3e4; border-left: 4px solid #3b5b8c; }
-    .caption.cap-income td { color: #1f4d43; background: #eaf3f0; border-top: 1px solid #c3ded6; border-bottom: 1px solid #c3ded6; border-left: 4px solid #2d7a6e; }
-    .group td, .total td { font-weight: 700; }
-    .leaf td { color: #374151; }
-    tr.group td { border-bottom: 1px dotted #bbb; padding-top: 4pt; color: #28354a; }
-    tr.total td { border-top: 2px solid #111; padding-top: 4pt; background: #f3f4f6; }
-    tr.total.negative td { color: #b3261e; border-top-color: #b3261e; }
-    .dim { color: #8a919c; font-weight: 400; font-size: 9pt; }
-    .signatures { margin-top: 28pt; width: 100%; }
-    .signatures td { width: 50%; padding-top: 22pt; border-top: 1px solid #111; }
-    .caption, .total { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.5;
+      color: var(--ink);
+      margin: 32px;
+      orphans: 2;
+      widows: 2;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* document header */
+    .doc-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16pt;
+      padding-bottom: 12pt;
+      border-bottom: 2.5px solid var(--ink);
+      margin-bottom: 20pt;
+    }
+    .doc-header .title { display: flex; align-items: center; gap: 10pt; }
+    .doc-header h1 { font-size: 19pt; letter-spacing: -.01em; margin: 0; line-height: 1.15; }
+    .doc-header .sub { margin-top: 3pt; color: var(--muted); font-size: 9.5pt; }
+    .doc-header .year {
+      padding: 5pt 12pt;
+      border: 1px solid var(--line);
+      border-radius: 999pt;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 9.5pt;
+      font-weight: 600;
+      letter-spacing: .06em;
+      white-space: nowrap;
+    }
+
+    /* sections */
+    .section { margin-bottom: 22pt; }
+    .section + .section { page-break-before: always; }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      gap: 8pt;
+      margin: 0 0 10pt;
+      page-break-after: avoid;
+    }
+    .section-head h2 { font-size: 13.5pt; letter-spacing: -.01em; margin: 0; }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 11pt;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(31, 42, 55, .05);
+    }
+
+    /* ledger table */
+    table.ledger { width: 100%; border-collapse: collapse; }
+    table.ledger .c-label { width: 33%; }
+    table.ledger .c-amount { width: 17%; }
+
+    table.ledger thead th {
+      text-align: left;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      font-weight: 700;
+      font-size: 8pt;
+      padding: 9pt 12pt;
+      border-bottom: 1px solid var(--line);
+      color: var(--ink);
+    }
+    table.ledger thead .th-amt { text-align: right; font-weight: 600; color: var(--muted); }
+    table.ledger thead .th-side-l { background: var(--tint-blue); }
+    table.ledger thead .th-side-r { background: var(--tint-violet); }
+    .section.income table.ledger thead .th-side-l { background: var(--tint-green); }
+    .section.income table.ledger thead .th-side-r { background: var(--tint-orange); }
+    table.ledger thead .tick {
+      display: inline-block;
+      width: 7pt;
+      height: 7pt;
+      border-radius: 2pt;
+      margin-right: 6pt;
+      vertical-align: 1pt;
+    }
+    table.ledger thead .th-side-l .tick { background: var(--blue); }
+    table.ledger thead .th-side-r .tick { background: var(--violet); }
+    .section.income table.ledger thead .th-side-l .tick { background: var(--green); }
+    .section.income table.ledger thead .th-side-r .tick { background: var(--orange); }
+
+    table.ledger tbody td {
+      padding: 6pt 12pt;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    table.ledger tbody tr:nth-child(even) td { background: #fafbfc; }
+    table.ledger tbody tr:last-child td { border-bottom: none; }
+
+    table.ledger td.lbl.group { font-weight: 700; }
+    table.ledger td.lbl.leaf { color: #374151; }
+    table.ledger td.lbl.negative, table.ledger td.amt.negative { color: var(--negative); }
+    table.ledger td.amt {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    table.ledger tfoot td {
+      padding: 8pt 12pt;
+      border-top: 2px solid var(--ink);
+      background: var(--soft);
+      font-weight: 700;
+    }
+
+    /* closing bar, e.g. Reingewinn / Reinverlust */
+    .result {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12pt;
+      margin: 12pt 14pt 14pt;
+      padding: 11pt 14pt;
+      border: 1px solid var(--line);
+      border-left: 4pt solid var(--green);
+      border-radius: 8pt;
+      font-weight: 800;
+      font-size: 12pt;
+      page-break-before: avoid;
+    }
+    .result.positive { color: #065f46; background: var(--tint-green); }
+    .result.negative { color: var(--negative); background: var(--tint-negative); border-left-color: var(--negative); }
+    .result .amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    /* signatures and footer note */
+    .signatures {
+      display: flex;
+      gap: 32pt;
+      margin-top: 34pt;
+    }
+    .sig {
+      flex: 1;
+      padding-top: 8pt;
+      border-top: 1px solid var(--ink);
+      color: var(--muted);
+      font-size: 9.5pt;
+    }
+
     @media print {
-      tr, table { page-break-inside: auto; }
-      .caption { page-break-after: avoid; }
+      body { background: #fff; margin: 0; }
+      .section + .section { page-break-before: always; }
+      table.ledger thead { display: table-header-group; }
+      table.ledger tbody tr, table.ledger tfoot tr { page-break-inside: avoid; }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>{{.Title}}</h1>
-    <div class="subtitle">Bilanz und Gewinn- und Verlustrechnung – Geschaeftsjahr {{.Year}}</div>
-  </div>
-  <table>
-    {{range .Rows}}{{if .IsPageBreak}}<tr class="pagebreak"><td>&nbsp;</td><td>&nbsp;</td></tr>{{else if .IsCaption}}<tr class="caption {{.Accent}}"><td colspan="2">{{.Label}}</td></tr>{{else}}<tr class="{{.Class}}{{if .Negative}} negative{{end}}"><td style="padding-left: {{.Level}}.5em"{{if .Full}} title="{{.Full}}"{{end}}>{{.Label}}</td><td class="num">{{range $i, $m := .Money}}{{if $i}}<br/>{{end}}{{$m.Amount}}&nbsp;{{$m.Currency}}{{end}}</td></tr>{{end}}{{end}}
-  </table>
-  <table class="signatures">
-    <tr>
-      <td>Ort, Datum</td>
-      <td>Unterschrift</td>
-    </tr>
-  </table>
-  <p class="dim">Erstellt mit beantool aus den Beancount-Daten.</p>
+  {{define "side"}}
+    {{if .}}
+    <td class="lbl{{if .IsGroup}} group{{end}}{{if .IsLeaf}} leaf{{end}}{{if .Negative}} negative{{end}}"{{if .Full}} title="{{.Full}}"{{end}} style="padding-left: {{.Indent}}">{{.Label}}</td>
+    <td class="amt{{if .Negative}} negative{{end}}">{{range $i, $m := .Money}}{{if $i}}<br/>{{end}}{{$m.Amount}}&nbsp;{{$m.Currency}}{{end}}</td>
+    {{else}}
+    <td class="lbl"></td>
+    <td class="amt"></td>
+    {{end}}
+  {{end}}
+  <header class="doc-header">
+    <div>
+      <div class="title"><h1>{{.Title}}</h1></div>
+      <div class="sub">{{.Subtitle}}</div>
+    </div>
+    <div class="year">Geschäftsjahr {{.Year}}</div>
+  </header>
+
+  <main>
+    {{range .Sections}}
+    <section class="section {{.Class}}">
+      <div class="section-head">
+        <h2>{{.Title}}</h2>
+      </div>
+      <div class="card">
+        <table class="ledger">
+          <colgroup>
+            <col class="c-label"/>
+            <col class="c-amount"/>
+            <col class="c-label"/>
+            <col class="c-amount"/>
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="th-side-l"><span class="tick"></span>{{.LeftTitle}}</th>
+              <th class="th-amt">Betrag</th>
+              <th class="th-side-r"><span class="tick"></span>{{.RightTitle}}</th>
+              <th class="th-amt">Betrag</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Body}}
+            <tr>
+              {{template "side" .Left}}
+              {{template "side" .Right}}
+            </tr>
+            {{end}}
+          </tbody>
+          {{if .Footer}}
+          <tfoot>
+            {{range .Footer}}
+            <tr>
+              {{template "side" .Left}}
+              {{template "side" .Right}}
+            </tr>
+            {{end}}
+          </tfoot>
+          {{end}}
+        </table>
+        {{range .Result}}
+        <div class="result {{if .Negative}}negative{{else}}positive{{end}}">
+          <span class="label">{{.Label}}</span>
+          <span class="amt">{{range $i, $m := .Money}}{{if $i}}<br/>{{end}}{{$m.Amount}}&nbsp;{{$m.Currency}}{{end}}</span>
+        </div>
+        {{end}}
+      </div>
+    </section>
+    {{end}}
+  </main>
+
+  <footer>
+    <div class="signatures">
+      <div class="sig">Ort, Datum</div>
+      <div class="sig">Unterschrift</div>
+    </div>
+    </footer>
 </body>
 </html>`

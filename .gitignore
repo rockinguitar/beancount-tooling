@@ -2,3 +2,5 @@ mise.local.toml
 .DS_Store
 example/reports/*
 !example/reports/.gitignore
+
+.vscode
