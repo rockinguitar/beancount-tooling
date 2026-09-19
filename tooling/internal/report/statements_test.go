@@ -82,9 +82,32 @@ func TestRenderStatementsHTML(t *testing.T) {
 		"5.000,00", // Einnahmen
 		"2.000,00", // Ausgaben
 		"3.000,00", // Reingewinn
+		"cap-balance",
+		"cap-income",
+		"print-color-adjust",
+		`title="Vermoegen:Bank:Giro"`,
+		">Giro</td>",
+		">Fest</td>",
+		">Vorauszahlungen</td>",
+		">Anfangsbestand</td>",
+		">Mitgliedsbeitraege</td>",
+		">Betrieb</td>",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("rendered HTML missing %q", want)
+		}
+	}
+
+	for _, unwanted := range []string{
+		">Vermoegen:Bank:Giro</td>",
+		">Vermoegen:Bank:Fest</td>",
+		">Verbindlichkeiten:Vorauszahlungen</td>",
+		">Eigenkapital:Anfangsbestand</td>",
+		">Einnahmen:Mitgliedsbeitraege</td>",
+		">Ausgaben:Betrieb</td>",
+	} {
+		if strings.Contains(html, unwanted) {
+			t.Errorf("rendered HTML still shows full account path in %q", unwanted)
 		}
 	}
 }
@@ -101,6 +124,76 @@ func TestRenderStatementsHTMLBalanceOnly(t *testing.T) {
 
 	if strings.Contains(html, `class="pagebreak"`) {
 		t.Errorf("did not expect a page break when no income statement is rendered")
+	}
+}
+
+func TestDisplayAccount(t *testing.T) {
+	cases := map[string]string{
+		"Eigenkapital:Earnings":          "Jahresergebnis",
+		"Eigenkapital:Earnings:Current":  "Laufendes Jahr",
+		"Eigenkapital:Earnings:Previous": "Vorjahr",
+		"Eigenkapital:Conversions":       "Umrechnungen",
+		"Vermoegen:Bank:Giro":            "Giro",
+		"Ausgaben:Gebuehren:Current":     "Current",
+	}
+
+	for input, want := range cases {
+		if got := displayAccount(input); got != want {
+			t.Errorf("displayAccount(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestRenderStatementsHTMLReservedAndZeroGroups(t *testing.T) {
+	html, err := RenderStatementsHTML(StatementsDoc{
+		Title: "Test",
+		Year:  "2026",
+		Balance: &fava.TreeReport{
+			Trees: []fava.TreeNode{
+				{
+					Account:         "Vermoegen",
+					BalanceChildren: fava.Amount{"NOK": "500.00"},
+					Children: []fava.TreeNode{
+						{Account: "Vermoegen:Bank:Giro", Balance: fava.Amount{"NOK": "500.00"}, BalanceChildren: fava.Amount{"NOK": "500.00"}},
+					},
+				},
+				{Account: "Verbindlichkeiten", BalanceChildren: fava.Amount{}},
+				{
+					Account:         "Eigenkapital",
+					BalanceChildren: fava.Amount{"NOK": "-500.00"},
+					Children: []fava.TreeNode{
+						{Account: "Eigenkapital:Earnings:Current", Balance: fava.Amount{"NOK": "-80.00"}, BalanceChildren: fava.Amount{"NOK": "-80.00"}},
+						{Account: "Eigenkapital:Earnings:Previous", Balance: fava.Amount{"NOK": "-420.00"}, BalanceChildren: fava.Amount{"NOK": "-420.00"}},
+						{Account: "Eigenkapital:Conversions", BalanceChildren: fava.Amount{}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RenderStatementsHTML returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"Laufendes Jahr",
+		"Vorjahr",
+		"Total Passiven",
+		`title="Eigenkapital:Earnings:Current"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("rendered HTML missing %q", want)
+		}
+	}
+
+	for _, unwanted := range []string{
+		">Verbindlichkeiten<",
+		"Conversions",
+		"Umrechnungen",
+		"Total Verbindlichkeiten",
+	} {
+		if strings.Contains(html, unwanted) {
+			t.Errorf("rendered HTML should not contain %q", unwanted)
+		}
 	}
 }
 

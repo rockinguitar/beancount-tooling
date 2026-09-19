@@ -71,10 +71,13 @@ type money struct {
 }
 
 type row struct {
-	Kind  rowKind
-	Level int
-	Label string
-	Money []money
+	Kind     rowKind
+	Level    int
+	Label    string
+	Full     string
+	Accent   string
+	Negative bool
+	Money    []money
 }
 
 func (r row) IsPageBreak() bool { return r.Kind == rowPageBreak }
@@ -105,14 +108,14 @@ func renderBalance(doc StatementsDoc) []row {
 	}
 
 	var rows []row
-	rows = append(rows, row{Kind: rowCaption, Label: "Bilanz " + asOfLabel})
+	rows = append(rows, row{Kind: rowCaption, Label: "Bilanz " + asOfLabel, Accent: "cap-balance"})
 
-	rows = append(rows, row{Kind: rowCaption, Label: "Aktiven"})
+	rows = append(rows, row{Kind: rowCaption, Label: "Aktiven", Accent: "cap-balance"})
 	rows = append(rows, renderTree(trees[0], false)...)
 	rows = append(rows, totalRow("Total Aktiven", trees[0].BalanceChildren, false))
 
 	if len(trees) > 1 {
-		rows = append(rows, row{Kind: rowCaption, Label: "Passiven"})
+		rows = append(rows, row{Kind: rowCaption, Label: "Passiven", Accent: "cap-balance"})
 		for _, tree := range trees[1:] {
 			rows = append(rows, renderTree(tree, true)...)
 		}
@@ -130,7 +133,7 @@ func renderIncome(doc StatementsDoc) []row {
 	trees := doc.Income.Trees
 
 	var rows []row
-	rows = append(rows, row{Kind: rowCaption, Label: "Gewinn- und Verlustrechnung " + doc.Year})
+	rows = append(rows, row{Kind: rowCaption, Label: "Gewinn- und Verlustrechnung " + doc.Year, Accent: "cap-income"})
 
 	income := trees[0]
 	rows = append(rows, renderTree(income, true)...)
@@ -142,25 +145,36 @@ func renderIncome(doc StatementsDoc) []row {
 
 		profit := negate(addMaps(income.BalanceChildren, expenses.BalanceChildren))
 		label := "Reingewinn"
+		negative := false
 		if sumValues(profit) < 0 {
 			label = "Reinverlust"
+			negative = true
 		}
-		rows = append(rows, row{Kind: rowTotal, Level: 0, Label: label, Money: amounts(profit)})
+		rows = append(rows, row{Kind: rowTotal, Level: 0, Label: label, Negative: negative, Money: amounts(profit)})
 	}
 
 	return rows
 }
 
 func renderTree(tree fava.TreeNode, negateBalance bool) []row {
+	rootBalance := negateOpt(tree.BalanceChildren, negateBalance)
+	if isZero(rootBalance) {
+		return nil
+	}
+
 	result := []row{
-		{Kind: rowGroup, Level: 0, Label: tree.Account, Money: amounts(negateOpt(tree.BalanceChildren, negateBalance))},
+		{Kind: rowGroup, Level: 0, Label: tree.Account, Full: tree.Account, Money: amounts(rootBalance)},
 	}
 
 	var collect func(children []fava.TreeNode, level int)
 	collect = func(children []fava.TreeNode, level int) {
 		for _, child := range children {
+			childBalance := negateOpt(child.BalanceChildren, negateBalance)
 			if len(child.Children) > 0 {
-				result = append(result, row{Kind: rowGroup, Level: level, Label: child.Account, Money: amounts(negateOpt(child.BalanceChildren, negateBalance))})
+				if isZero(childBalance) {
+					continue
+				}
+				result = append(result, row{Kind: rowGroup, Level: level, Label: displayAccount(child.Account), Full: child.Account, Money: amounts(childBalance)})
 				collect(child.Children, level+1)
 				continue
 			}
@@ -169,13 +183,51 @@ func renderTree(tree fava.TreeNode, negateBalance bool) []row {
 			if isZero(balance) {
 				continue
 			}
-			result = append(result, row{Kind: rowLeaf, Level: level, Label: child.Account, Money: amounts(balance)})
+			result = append(result, row{Kind: rowLeaf, Level: level, Label: displayAccount(child.Account), Full: child.Account, Money: amounts(balance)})
 		}
 	}
 	collect(tree.Children, 1)
 
 	result = append(result, totalRow("Total "+tree.Account, tree.BalanceChildren, negateBalance))
 	return result
+}
+
+// shortAccount returns the last segment of a hierarchical account name.
+// "Vermoegen:Bank:Anlage" becomes "Anlage" — the nesting is conveyed by
+// indentation, and the full path is available via the row's Full field.
+func shortAccount(account string) string {
+	if index := strings.LastIndex(account, ":"); index >= 0 {
+		return account[index+1:]
+	}
+	return account
+}
+
+// reservedEquityLabels translates the fixed English segment names Beancount
+// uses for its reserved equity accounts (Earnings/Conversions/Current/...).
+// Only the root of those names is configurable (name_equity).
+var reservedEquityLabels = map[string]string{
+	"Earnings":    "Jahresergebnis",
+	"Conversions": "Umrechnungen",
+	"Current":     "Laufendes Jahr",
+	"Previous":    "Vorjahr",
+}
+
+// displayAccount is the visible label for an account: its last segment,
+// translated when the account is one of Beancount's reserved equity accounts.
+func displayAccount(account string) string {
+	if isReservedEquityAccount(account) {
+		if label, ok := reservedEquityLabels[shortAccount(account)]; ok {
+			return label
+		}
+	}
+	return shortAccount(account)
+}
+
+func isReservedEquityAccount(account string) bool {
+	return strings.HasSuffix(account, ":Earnings") ||
+		strings.HasSuffix(account, ":Earnings:Current") ||
+		strings.HasSuffix(account, ":Earnings:Previous") ||
+		strings.HasSuffix(account, ":Conversions")
 }
 
 func totalRow(label string, values fava.Amount, negateValues bool) row {
@@ -312,20 +364,26 @@ const statementsTemplate = `<!DOCTYPE html>
   <style>
     @page { size: A4; margin: 18mm 16mm; }
     * { box-sizing: border-box; }
-    body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 11pt; color: #111; margin: 0; }
-    h1 { font-size: 17pt; margin: 0 0 2pt 0; }
-    .subtitle { color: #555; margin-bottom: 14pt; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 11pt; color: #1f2937; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .header { border-bottom: 3px solid #3b5b8c; padding-bottom: 6pt; margin-bottom: 12pt; }
+    h1 { font-size: 18pt; margin: 0 0 2pt 0; color: #17202a; }
+    .subtitle { color: #6b7280; margin: 0; }
     table { width: 100%; border-collapse: collapse; }
     tr.pagebreak td { height: 0; padding: 0; border: 0; }
-    .caption td { font-weight: 700; font-size: 12pt; border-top: 2px solid #111; border-bottom: 1px solid #111; padding: 6pt 0 4pt 0; letter-spacing: .02em; }
     td { padding: 1.5pt 4pt; vertical-align: top; }
     td.num { text-align: right; white-space: nowrap; }
+    .caption td { font-weight: 700; font-size: 12pt; padding: 5pt 8pt; letter-spacing: .02em; border-radius: 3pt; }
+    .caption.cap-balance td { color: #1e3a5f; background: #eef2f8; border-top: 1px solid #c6d3e4; border-bottom: 1px solid #c6d3e4; border-left: 4px solid #3b5b8c; }
+    .caption.cap-income td { color: #1f4d43; background: #eaf3f0; border-top: 1px solid #c3ded6; border-bottom: 1px solid #c3ded6; border-left: 4px solid #2d7a6e; }
     .group td, .total td { font-weight: 700; }
-    tr.group td { border-bottom: 1px dotted #aaa; padding-top: 4pt; }
-    tr.total td { border-top: 1px solid #111; padding-top: 4pt; }
-    .dim { color: #999; font-weight: 400; font-size: 9pt; }
+    .leaf td { color: #374151; }
+    tr.group td { border-bottom: 1px dotted #bbb; padding-top: 4pt; color: #28354a; }
+    tr.total td { border-top: 2px solid #111; padding-top: 4pt; background: #f3f4f6; }
+    tr.total.negative td { color: #b3261e; border-top-color: #b3261e; }
+    .dim { color: #8a919c; font-weight: 400; font-size: 9pt; }
     .signatures { margin-top: 28pt; width: 100%; }
     .signatures td { width: 50%; padding-top: 22pt; border-top: 1px solid #111; }
+    .caption, .total { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     @media print {
       tr, table { page-break-inside: auto; }
       .caption { page-break-after: avoid; }
@@ -333,10 +391,12 @@ const statementsTemplate = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>{{.Title}}</h1>
-  <div class="subtitle">Bilanz und Gewinn- und Verlustrechnung – Geschaeftsjahr {{.Year}}</div>
+  <div class="header">
+    <h1>{{.Title}}</h1>
+    <div class="subtitle">Bilanz und Gewinn- und Verlustrechnung – Geschaeftsjahr {{.Year}}</div>
+  </div>
   <table>
-    {{range .Rows}}{{if .IsPageBreak}}<tr class="pagebreak"><td>&nbsp;</td><td>&nbsp;</td></tr>{{else if .IsCaption}}<tr class="caption"><td colspan="2">{{.Label}}</td></tr>{{else}}<tr class="{{.Class}}"><td style="padding-left: {{.Level}}.5em">{{.Label}}</td><td class="num">{{range $i, $m := .Money}}{{if $i}}<br/>{{end}}{{$m.Amount}}&nbsp;{{$m.Currency}}{{end}}</td></tr>{{end}}{{end}}
+    {{range .Rows}}{{if .IsPageBreak}}<tr class="pagebreak"><td>&nbsp;</td><td>&nbsp;</td></tr>{{else if .IsCaption}}<tr class="caption {{.Accent}}"><td colspan="2">{{.Label}}</td></tr>{{else}}<tr class="{{.Class}}{{if .Negative}} negative{{end}}"><td style="padding-left: {{.Level}}.5em"{{if .Full}} title="{{.Full}}"{{end}}>{{.Label}}</td><td class="num">{{range $i, $m := .Money}}{{if $i}}<br/>{{end}}{{$m.Amount}}&nbsp;{{$m.Currency}}{{end}}</td></tr>{{end}}{{end}}
   </table>
   <table class="signatures">
     <tr>
