@@ -447,7 +447,7 @@ const statementsTemplate = `<!DOCTYPE html>
       --tint-negative: #fef2f2;
     }
 
-    @page { size: A4; margin: 24mm 20mm 22mm; }
+    @page { size: A4 landscape; margin: 14mm 12mm 14mm; }
 
     * { box-sizing: border-box; }
 
