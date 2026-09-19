@@ -91,7 +91,7 @@ func TestRenderStatementsHTML(t *testing.T) {
 		">Giro</td>",
 		">Fest</td>",
 		">Vorauszahlungen</td>",
-		">Anfangsbestand</td>",
+		">Anfangsbestand per 31.12.2023</td>",
 		">Mitgliedsbeitraege</td>",
 		">Betrieb</td>",
 	} {
@@ -186,8 +186,9 @@ func TestDisplayAccount(t *testing.T) {
 	cases := map[string]string{
 		"Eigenkapital:Earnings":          "Jahresergebnis",
 		"Eigenkapital:Earnings:Current":  "Laufendes Jahr",
-		"Eigenkapital:Earnings:Previous": "Vorjahr",
+		"Eigenkapital:Earnings:Previous": "Previous",
 		"Eigenkapital:Conversions":       "Umrechnungen",
+		"Eigenkapital:Anfangsbestand":    "Anfangsbestand per 31.12.2023",
 		"Vermoegen:Bank:Giro":            "Giro",
 		"Ausgaben:Gebuehren:Current":     "Current",
 	}
@@ -231,8 +232,8 @@ func TestRenderStatementsHTMLReservedAndZeroGroups(t *testing.T) {
 
 	for _, want := range []string{
 		"Laufendes Jahr",
-		"Vorjahr",
-		">Vorjahr</td>",
+		"Previous",
+		">Previous</td>",
 		"Total Aktiven",
 		"Total Passiven",
 		`title="Eigenkapital:Earnings:Current"`,

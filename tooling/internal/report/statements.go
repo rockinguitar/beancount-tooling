@@ -273,18 +273,25 @@ var reservedEquityLabels = map[string]string{
 	"Earnings":    "Jahresergebnis",
 	"Conversions": "Umrechnungen",
 	"Current":     "Laufendes Jahr",
-	"Previous":    "Vorjahr",
 }
+
+// anfangsbestandLabel is the display label for the opening-balances account,
+// pinned to the fixed date on which the initial balances were booked.
+const anfangsbestandLabel = "Anfangsbestand per 31.12.2023"
 
 // displayAccount is the visible label for an account: its last segment,
 // translated when the account is one of Beancount's reserved equity accounts.
 func displayAccount(account string) string {
+	short := shortAccount(account)
+	if short == "Anfangsbestand" {
+		return anfangsbestandLabel
+	}
 	if isReservedEquityAccount(account) {
-		if label, ok := reservedEquityLabels[shortAccount(account)]; ok {
+		if label, ok := reservedEquityLabels[short]; ok {
 			return label
 		}
 	}
-	return shortAccount(account)
+	return short
 }
 
 func isReservedEquityAccount(account string) bool {
