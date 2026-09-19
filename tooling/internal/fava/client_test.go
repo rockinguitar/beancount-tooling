@@ -125,8 +125,8 @@ func TestExtractSlug(t *testing.T) {
 	for input, want := range map[string]string{
 		"/schweizerklub-norwegen/income_statement/": "schweizerklub-norwegen",
 		"/ledgermainbeancount/":                     "ledgermainbeancount",
-		"/":                                          "",
-		"http://localhost:5000/foo/bar":              "foo",
+		"/":                                         "",
+		"http://localhost:5000/foo/bar":             "foo",
 	} {
 		if got := extractSlug(input); got != want {
 			t.Errorf("extractSlug(%q) = %q, want %q", input, got, want)

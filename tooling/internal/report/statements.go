@@ -3,7 +3,8 @@ package report
 import (
 	"bytes"
 	"html/template"
-	"sort"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -196,8 +197,8 @@ func renderTree(tree fava.TreeNode, negateBalance bool) []row {
 // "Vermoegen:Bank:Anlage" becomes "Anlage" — the nesting is conveyed by
 // indentation, and the full path is available via the row's Full field.
 func shortAccount(account string) string {
-	if index := strings.LastIndex(account, ":"); index >= 0 {
-		return account[index+1:]
+	if _, short, found := strings.CutLast(account, ":"); found {
+		return short
 	}
 	return account
 }
@@ -299,11 +300,8 @@ func sumValues(values fava.Amount) float64 {
 }
 
 func amounts(values fava.Amount) []money {
-	currencies := make([]string, 0, len(values))
-	for currency := range values {
-		currencies = append(currencies, currency)
-	}
-	sort.Strings(currencies)
+	currencies := slices.Collect(maps.Keys(values))
+	slices.Sort(currencies)
 
 	out := make([]money, 0, len(currencies))
 	for _, currency := range currencies {
@@ -326,8 +324,7 @@ func formatHuman(number float64) string {
 	}
 
 	raw := strconv.FormatFloat(number, 'f', 2, 64)
-	parts := strings.SplitN(raw, ".", 2)
-	intPart, fracPart := parts[0], parts[1]
+	intPart, fracPart, _ := strings.Cut(raw, ".")
 
 	negative := strings.HasPrefix(intPart, "-")
 	if negative {

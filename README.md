@@ -14,7 +14,7 @@ The CLI also talks to the Fava JSON API and renders a **self-contained, print-re
 
 - Docker plus either Docker Desktop or Colima
 - `mise`
-- Go `1.26` for local CLI development and tests
+- Go `1.27` for local CLI development and tests
 
 If you use Colima:
 

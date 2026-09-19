@@ -177,11 +177,11 @@ type TreeReport struct {
 
 // TreeNode is a single account node in a TreeReport.
 type TreeNode struct {
-	Account         string `json:"account"`
-	Balance         Amount `json:"balance"`
-	BalanceChildren Amount `json:"balance_children"`
+	Account         string     `json:"account"`
+	Balance         Amount     `json:"balance"`
+	BalanceChildren Amount     `json:"balance_children"`
 	Children        []TreeNode `json:"children"`
-	HasTxns         bool   `json:"has_txns"`
+	HasTxns         bool       `json:"has_txns"`
 }
 
 // Amount maps a currency to its decimal value. Fava serializes decimal values

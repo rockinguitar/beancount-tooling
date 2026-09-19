@@ -1,3 +1,3 @@
 module github.com/rockinguitar/beancount-tooling
 
-go 1.26
+go 1.27
