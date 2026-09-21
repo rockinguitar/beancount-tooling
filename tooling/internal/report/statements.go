@@ -84,7 +84,7 @@ func RenderStatementsHTML(doc StatementsDoc) (string, error) {
 		sections = append(sections, *income)
 	}
 
-	subtitle := "Bilanz und Gewinn- und Verlustrechnung"
+	subtitle := "Bilanz, Gewinn- und Verlustrechnung"
 	if len(sections) == 1 {
 		switch sections[0].Class {
 		case "balance":
